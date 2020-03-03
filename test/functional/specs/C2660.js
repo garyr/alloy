@@ -20,7 +20,8 @@ test.meta({
 
 const setConsentPending = ClientFunction(() => {
   window.alloy("configure", {
-    defaultConsent: { general: "pending" }
+    defaultConsent: { general: "pending" },
+    ...environmentContextConfig
   });
 });
 
@@ -51,7 +52,10 @@ const triggerAlloyEvent = ClientFunction(() => {
 });
 
 test("C2660 - Context data is captured before user consents.", async () => {
-  await configureAlloyInstance("alloy", environmentContextConfig);
+  await configureAlloyInstance("alloy", {
+    defaultConsent: { general: "pending" },
+    ...environmentContextConfig
+  });
 
   await setConsentPending();
 
