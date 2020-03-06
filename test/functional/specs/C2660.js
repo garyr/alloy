@@ -2,6 +2,7 @@ import { t, ClientFunction } from "testcafe";
 import createNetworkLogger from "../helpers/networkLogger";
 import fixtureFactory from "../helpers/fixtureFactory";
 import environmentContextConfig from "../helpers/constants/environmentContextConfig";
+import alloyEvent from "../helpers/alloyEvent";
 import viewportHelper from "../helpers/window/viewport";
 import configureAlloyInstance from "../helpers/configureAlloyInstance";
 
@@ -22,42 +23,6 @@ const setConsentIn = ClientFunction(() => {
   return window.alloy("setConsent", { general: "in" });
 });
 
-// triggers an alloy event (note this can block with 'await' if consent is not yet provided)
-const triggerAlloyEvent = ClientFunction(() => {
-  return window.alloy("event", {
-    xdm: {
-      web: {
-        webPageDetails: {
-          URL: "https://alloyio.com/functional-test/alloyTestPage.html"
-        }
-      }
-    }
-  });
-});
-
-// queues an alloy event and tries to flush the promise chain
-const queueAlloyEvent = ClientFunction(() => {
-  window.alloy("event", {
-    xdm: {
-      web: {
-        webPageDetails: {
-          URL: "https://alloyio.com/functional-test/alloyTestPage.html"
-        }
-      }
-    }
-  });
-
-  let promise;
-
-  for (let i = 0; i < 10; i += 1) {
-    promise = promise
-      ? promise.then(() => Promise.resolve())
-      : Promise.resolve();
-  }
-
-  return promise;
-});
-
 test("C2660 - Context data is captured before user consents.", async () => {
   await configureAlloyInstance("alloy", {
     defaultConsent: { general: "pending" },
@@ -67,24 +32,37 @@ test("C2660 - Context data is captured before user consents.", async () => {
   // capture original viewport
   const originalViewport = await viewportHelper.getViewportSize();
 
-  // queue first event
-  await queueAlloyEvent();
-
-  // resize window viewport
   const newViewport = {
     width: 640,
     height: 480
   };
+
+  const eventData = {
+    xdm: {
+      web: {
+        webPageDetails: {
+          URL: "https://alloyio.com/functional-test/alloyTestPage.html"
+        }
+      }
+    }
+  };
+
+  const promises = [];
+
+  // send first event
+  promises.push(await alloyEvent(eventData));
+
+  // resize the viewport
   await t.resizeWindow(newViewport.width, newViewport.height);
 
-  // trigger second event
-  const promise = triggerAlloyEvent();
+  // send the second event
+  promises.push(await alloyEvent(eventData));
 
   // apply user consent
   await setConsentIn();
 
-  // wait for second event to complete
-  await promise;
+  // wait for events to complete
+  await Promise.all(promises || []);
 
   // reset to original size
   await t.resizeWindow(originalViewport.width, originalViewport.height);
